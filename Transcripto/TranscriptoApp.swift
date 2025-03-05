@@ -2,7 +2,7 @@
 //  TranscriptoApp.swift
 //  Transcripto
 //
-//  Created by Satvik  Jadhav on 2/25/25.
+//  Created by Lakshmi Tulasi Ummadipolu on 3/4/25.
 //
 
 import SwiftUI
@@ -11,7 +11,7 @@ import SwiftUI
 struct TranscriptoApp: App {
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            ContentView() // Main screen of the app
         }
     }
 }
