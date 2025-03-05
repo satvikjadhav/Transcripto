@@ -39,7 +39,7 @@ struct ContentView: View {
                     .font(.title2)
                     .padding()
             }
-            .navigationTitle("Transcription App")
+            .navigationTitle("Transcripto")
         }
     }
 }
