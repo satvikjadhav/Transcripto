@@ -2,72 +2,80 @@ import AVFoundation
 import Combine
 
 class AudioRecorder: NSObject, ObservableObject, AVAudioRecorderDelegate {
-    @Published var isRecording = false  // Published property for UI updates
+    @Published var isRecording = false  // For UI updates
+    @Published var lastRecordingURL: URL? = nil  // New published property for the finished recording
+
     private var audioRecorder: AVAudioRecorder?
     private var recordingURL: URL?
-
+    
+    // Generate a unique file URL for each recording.
+    private func generateRecordingURL() -> URL {
+        let documentsDirectory = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyyMMdd-HHmmss"
+        let fileName = "recording-\(formatter.string(from: Date())).wav"
+        return documentsDirectory.appendingPathComponent(fileName)
+    }
+    
     func startRecording() {
         let session = AVAudioSession.sharedInstance()
-
+        
         do {
-            try session.setCategory(.playAndRecord, mode: .default) //Correct Category
+            try session.setCategory(.playAndRecord, mode: .default)
             try session.setActive(true)
-
-            // Create a URL for the recording (in the documents directory)
-            let documentsDirectory = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-            recordingURL = documentsDirectory.appendingPathComponent("recording.wav") //Use .wav, very important
-
-            // **Recording Settings (16kHz, etc.)**
+            
+            recordingURL = generateRecordingURL()  // Use a unique URL each time
+            
             let settings: [String: Any] = [
-                AVFormatIDKey: kAudioFormatLinearPCM, // Uncompressed PCM format
-                AVSampleRateKey: 16000,                // 16kHz sample rate
-                AVNumberOfChannelsKey: 1,              // Mono audio
-                AVLinearPCMBitDepthKey: 16,            //16 bit
-                AVLinearPCMIsBigEndianKey: false,     //Little Endian
-                AVLinearPCMIsFloatKey: false,          //integer
-                AVEncoderAudioQualityKey: AVAudioQuality.high.rawValue  //Good quality
+                AVFormatIDKey: kAudioFormatLinearPCM,
+                AVSampleRateKey: 16000,
+                AVNumberOfChannelsKey: 1,
+                AVLinearPCMBitDepthKey: 16,
+                AVLinearPCMIsBigEndianKey: false,
+                AVLinearPCMIsFloatKey: false,
+                AVEncoderAudioQualityKey: AVAudioQuality.high.rawValue
             ]
-
+            
             guard let url = recordingURL else {
-              print("Error with url")
-              return
+                print("Error generating file URL")
+                return
             }
-
+            
             audioRecorder = try AVAudioRecorder(url: url, settings: settings)
-            audioRecorder?.delegate = self  // Set the delegate
-            audioRecorder?.isMeteringEnabled = true //If you want level metering
+            audioRecorder?.delegate = self
+            audioRecorder?.isMeteringEnabled = true
             audioRecorder?.prepareToRecord()
             audioRecorder?.record()
-
-            isRecording = true // Update the published property
+            
+            isRecording = true
         } catch {
             print("Error starting recording: \(error.localizedDescription)")
-            isRecording = false  // Make sure to set to false on error
+            isRecording = false
         }
     }
-
+    
     func stopRecording() {
         audioRecorder?.stop()
-        isRecording = false // Update published property
+        isRecording = false
         audioRecorder = nil
     }
-
-    // AVAudioRecorderDelegate method (called when recording finishes)
+    
+    // Called when the recording finishes
     func audioRecorderDidFinishRecording(_ recorder: AVAudioRecorder, successfully flag: Bool) {
         if flag {
-            print("Recording finished successfully.  File at: \(recordingURL?.absoluteString ?? "Unknown URL")")
+            print("Recording finished successfully. File at: \(recordingURL?.absoluteString ?? "Unknown URL")")
+            lastRecordingURL = recordingURL  // Publish the finished recording URL
         } else {
             print("Recording failed.")
-            // Handle the failure (e.g., show an alert to the user)
         }
-        isRecording = false // Make sure this is updated
+        isRecording = false
     }
-
-    // Handle interruption
+    
+    // Handle encoding errors
     func audioRecorderEncodeErrorDidOccur(_ recorder: AVAudioRecorder, error: Error?) {
         if let e = error {
             print("Encode error occurred: \(e.localizedDescription)")
         }
-        isRecording = false // Reset the recording state
+        isRecording = false
     }
 }

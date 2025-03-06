@@ -1,11 +1,9 @@
 import SwiftUI
-import AVFoundation  // Needed for AVAudioSession and related classes
+import AVFoundation
 
 struct RecordingsView: View {
     let folderName: String
-    @State private var recordings = ["Voice Note 1", "Voice Note 2", "Voice Note 3"]
-    
-    // Instantiate the audio recorder as a state object
+    @State private var recordings: [String] = ["Voice Note 1", "Voice Note 2", "Voice Note 3"] // Now using names rather than URLs
     @StateObject private var audioRecorder = AudioRecorder()
     
     var body: some View {
@@ -16,7 +14,7 @@ struct RecordingsView: View {
                         Text(recording)
                         Spacer()
                         Button(action: {
-                            // Play recording logic
+                            // Playback logic can be implemented here
                         }) {
                             Image(systemName: "play.circle")
                                 .foregroundColor(.blue)
@@ -27,7 +25,7 @@ struct RecordingsView: View {
             
             Spacer()
             
-            // Additional playback controls (if needed)
+            // Playback controls (if needed)
             HStack {
                 Button(action: {
                     // Rewind logic
@@ -47,7 +45,7 @@ struct RecordingsView: View {
                 .padding()
                 
                 Button(action: {
-                    // Stop logic (if you want to stop playback)
+                    // Stop logic for playback (if needed)
                 }) {
                     Image(systemName: "trash")
                         .font(.largeTitle)
@@ -56,7 +54,7 @@ struct RecordingsView: View {
                 .padding()
             }
             
-            // Recording button: toggles start and stop recording
+            // Record button: toggles recording on/off with a consistent circular icon
             Button(action: {
                 if audioRecorder.isRecording {
                     audioRecorder.stopRecording()
@@ -64,14 +62,12 @@ struct RecordingsView: View {
                     audioRecorder.startRecording()
                 }
             }) {
-                // Change icon based on recording state
-                Image(systemName: audioRecorder.isRecording ? "stop.fill" : "mic.circle.fill")
+                Image(systemName: audioRecorder.isRecording ? "stop.circle.fill" : "mic.circle.fill")
                     .font(.system(size: 70))
-                    .foregroundColor(audioRecorder.isRecording ? .gray : .red)
+                    .foregroundColor(.red)
                     .padding()
             }
             
-            // Optionally display recording status text
             if audioRecorder.isRecording {
                 Text("Recording...")
                     .foregroundColor(.red)
@@ -79,6 +75,14 @@ struct RecordingsView: View {
             }
         }
         .navigationTitle(folderName)
+        // When a new recording finishes, update the recordings list with a custom name.
+        .onReceive(audioRecorder.$lastRecordingURL) { newURL in
+            if newURL != nil {
+                // Instead of using the URL, we generate a name like "Voice Note X"
+                let newName = "Voice Note \(recordings.count + 1)"
+                recordings.append(newName)
+            }
+        }
     }
 }
 
