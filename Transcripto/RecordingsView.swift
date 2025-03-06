@@ -1,9 +1,13 @@
 import SwiftUI
+import AVFoundation  // Needed for AVAudioSession and related classes
 
 struct RecordingsView: View {
     let folderName: String
     @State private var recordings = ["Voice Note 1", "Voice Note 2", "Voice Note 3"]
-
+    
+    // Instantiate the audio recorder as a state object
+    @StateObject private var audioRecorder = AudioRecorder()
+    
     var body: some View {
         VStack {
             List {
@@ -23,6 +27,7 @@ struct RecordingsView: View {
             
             Spacer()
             
+            // Additional playback controls (if needed)
             HStack {
                 Button(action: {
                     // Rewind logic
@@ -42,7 +47,7 @@ struct RecordingsView: View {
                 .padding()
                 
                 Button(action: {
-                    // Stop logic
+                    // Stop logic (if you want to stop playback)
                 }) {
                     Image(systemName: "trash")
                         .font(.largeTitle)
@@ -51,13 +56,26 @@ struct RecordingsView: View {
                 .padding()
             }
             
+            // Recording button: toggles start and stop recording
             Button(action: {
-                // Start recording logic
+                if audioRecorder.isRecording {
+                    audioRecorder.stopRecording()
+                } else {
+                    audioRecorder.startRecording()
+                }
             }) {
-                Image(systemName: "mic.circle.fill")
+                // Change icon based on recording state
+                Image(systemName: audioRecorder.isRecording ? "stop.fill" : "mic.circle.fill")
                     .font(.system(size: 70))
-                    .foregroundColor(.red)
+                    .foregroundColor(audioRecorder.isRecording ? .gray : .red)
                     .padding()
+            }
+            
+            // Optionally display recording status text
+            if audioRecorder.isRecording {
+                Text("Recording...")
+                    .foregroundColor(.red)
+                    .padding(.top, 5)
             }
         }
         .navigationTitle(folderName)
@@ -69,4 +87,3 @@ struct RecordingsView_Previews: PreviewProvider {
         RecordingsView(folderName: "Sample Folder")
     }
 }
-
