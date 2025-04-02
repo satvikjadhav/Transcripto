@@ -7,6 +7,8 @@
 
 import SwiftUI
 
+// class AudioTranscriber....
+
 struct ContentView: View {
     @State private var folders: [String] = []  // Start with an empty list
     @State private var newFolderName = ""     // Stores the folder name for input
