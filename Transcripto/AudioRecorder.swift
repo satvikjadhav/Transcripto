@@ -1,81 +1,77 @@
+// AudioRecorder.swift
+import Foundation
 import AVFoundation
-import Combine
 
-class AudioRecorder: NSObject, ObservableObject, AVAudioRecorderDelegate {
-    @Published var isRecording = false  // For UI updates
-    @Published var lastRecordingURL: URL? = nil  // New published property for the finished recording
-
-    private var audioRecorder: AVAudioRecorder?
-    private var recordingURL: URL?
+class AudioRecorder: NSObject, AVAudioRecorderDelegate {
+    static let shared = AudioRecorder()
     
-    // Generate a unique file URL for each recording.
-    private func generateRecordingURL() -> URL {
-        let documentsDirectory = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-        let formatter = DateFormatter()
-        formatter.dateFormat = "yyyyMMdd-HHmmss"
-        let fileName = "recording-\(formatter.string(from: Date())).wav"
-        return documentsDirectory.appendingPathComponent(fileName)
+    private var audioRecorder: AVAudioRecorder?
+    private var audioFilename: URL?
+    
+    var isRecording = false
+    var recordingCompletion: ((URL?) -> Void)?
+    
+    private override init() {
+        super.init()
+        setupAudioSession()
     }
     
-    func startRecording() {
-        let session = AVAudioSession.sharedInstance()
+    private func setupAudioSession() {
+        let audioSession = AVAudioSession.sharedInstance()
+        do {
+            try audioSession.setCategory(.playAndRecord, mode: .default)
+            try audioSession.setActive(true)
+        } catch {
+            print("Failed to set up audio session: \(error)")
+        }
+    }
+    
+    func requestPermissions(completion: @escaping (Bool) -> Void) {
+        AVAudioSession.sharedInstance().requestRecordPermission { granted in
+            DispatchQueue.main.async {
+                completion(granted)
+            }
+        }
+    }
+    
+    func startRecording(completion: @escaping (Bool) -> Void) {
+        let documentsDirectory = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        audioFilename = documentsDirectory.appendingPathComponent("recording-\(Date().timeIntervalSince1970).m4a")
+        
+        guard let audioFilename = audioFilename else {
+            completion(false)
+            return
+        }
+        
+        let settings = [
+            AVFormatIDKey: Int(kAudioFormatMPEG4AAC),
+            AVSampleRateKey: 44100,
+            AVNumberOfChannelsKey: 1,
+            AVEncoderAudioQualityKey: AVAudioQuality.high.rawValue
+        ]
         
         do {
-            try session.setCategory(.playAndRecord, mode: .default)
-            try session.setActive(true)
-            
-            recordingURL = generateRecordingURL()  // Use a unique URL each time
-            
-            let settings: [String: Any] = [
-                AVFormatIDKey: kAudioFormatLinearPCM,
-                AVSampleRateKey: 16000,
-                AVNumberOfChannelsKey: 1,
-                AVLinearPCMBitDepthKey: 16,
-                AVLinearPCMIsBigEndianKey: false,
-                AVLinearPCMIsFloatKey: false,
-                AVEncoderAudioQualityKey: AVAudioQuality.high.rawValue
-            ]
-            
-            guard let url = recordingURL else {
-                print("Error generating file URL")
-                return
-            }
-            
-            audioRecorder = try AVAudioRecorder(url: url, settings: settings)
+            audioRecorder = try AVAudioRecorder(url: audioFilename, settings: settings)
             audioRecorder?.delegate = self
-            audioRecorder?.isMeteringEnabled = true
-            audioRecorder?.prepareToRecord()
             audioRecorder?.record()
-            
             isRecording = true
+            completion(true)
         } catch {
-            print("Error starting recording: \(error.localizedDescription)")
-            isRecording = false
+            print("Could not start recording: \(error)")
+            completion(false)
         }
     }
     
     func stopRecording() {
         audioRecorder?.stop()
         isRecording = false
-        audioRecorder = nil
+        recordingCompletion?(audioFilename)
     }
     
-    // Called when the recording finishes
+    // AVAudioRecorderDelegate methods
     func audioRecorderDidFinishRecording(_ recorder: AVAudioRecorder, successfully flag: Bool) {
-        if flag {
-            print("Recording finished successfully. File at: \(recordingURL?.absoluteString ?? "Unknown URL")")
-            lastRecordingURL = recordingURL  // Publish the finished recording URL
-        } else {
-            print("Recording failed.")
+        if !flag {
+            recordingCompletion?(nil)
         }
-        isRecording = false
-    }
-    
-    // Handle encoding errors
-    func audioRecorderEncodeErrorDidOccur(_ recorder: AVAudioRecorder, error: Error?) {
-        if let e = error {
-            print("Encode error occurred: \(e.localizedDescription)")
-        }
-        isRecording = false
     }
 }
