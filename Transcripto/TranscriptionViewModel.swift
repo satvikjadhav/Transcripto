@@ -28,14 +28,23 @@ class TranscriptionViewModel: ObservableObject {
     func setupWhisperKit() {
         state = .loading
         
-        WhisperKitManager.shared.setup { [weak self] result in
-            guard let self = self else { return }
-            
+//        WhisperKitManager.shared.setup { [weak self] result in
+//            guard let self = self else { return }
+//            
+//            switch result {
+//            case .success:
+//                self.state = .idle
+//            case .failure(let error):
+//                self.state = .error("Failed to initialize WhisperKit: \(error.localizedDescription)")
+//            }
+//        }
+        
+        WhisperKitManager.shared.setup { result in
             switch result {
             case .success:
-                self.state = .idle
+                print("WhisperKit setup complete.")
             case .failure(let error):
-                self.state = .error("Failed to initialize WhisperKit: \(error.localizedDescription)")
+                print("Setup failed: \(error)")
             }
         }
     }
@@ -62,7 +71,7 @@ class TranscriptionViewModel: ObservableObject {
     }
     
     func stopRecordingAndTranscribe() {
-        guard state == .recording else { return }
+        guard case .recording = state else { return }
         
         state = .transcribing
         transcriptionText = ""
@@ -112,7 +121,7 @@ class TranscriptionViewModel: ObservableObject {
     }
     
     func stopRealTimeTranscription() {
-        if isRealTimeMode && state == .transcribing {
+        if isRealTimeMode, case .transcribing = state {
             let finalText = RealTimeTranscription.shared.stopTranscribing()
             transcriptionText = finalText
             state = .completed
