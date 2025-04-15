@@ -42,24 +42,19 @@ class TranscriptionViewModel: ObservableObject {
     
     func setupWhisperKit() {
         state = .loading
-        
-//        WhisperKitManager.shared.setup { [weak self] result in
-//            guard let self = self else { return }
-//            
-//            switch result {
-//            case .success:
-//                self.state = .idle
-//            case .failure(let error):
-//                self.state = .error("Failed to initialize WhisperKit: \(error.localizedDescription)")
-//            }
-//        }
-        
+            
         WhisperKitManager.shared.setup { result in
             switch result {
             case .success:
-                print("WhisperKit setup complete.")
+                DispatchQueue.main.async {
+                    self.state = .idle
+                    print("WhisperKit initialization complete!")
+                }
             case .failure(let error):
-                print("Setup failed: \(error)")
+                DispatchQueue.main.async {
+                    self.state = .error("Failed to initialize WhisperKit: \(error.localizedDescription)")
+                    print("WhisperKit error: \(error)")
+                }
             }
         }
     }

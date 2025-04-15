@@ -21,13 +21,21 @@ class WhisperKitManager {
     func setup(completion: @escaping (Result<Void, Error>) -> Void) {
         Task {
             do {
-                // Initialize WhisperKit with default settings
-                whisperKit = try await WhisperKit()
+                print("Starting WhisperKit initialization with tiny model...")
+                // Initialize WhisperKit with the tiny model, explicitly specifying download if needed
+                whisperKit = try await WhisperKit(
+                    model: "tiny",
+                    modelFolder: nil, // Use default folder
+                    verbose: true,    // Enable verbose logging for debugging
+                    download: true    // Explicitly request download if needed
+                )
+                print("WhisperKit initialization completed!")
                 isModelLoaded = true
                 DispatchQueue.main.async {
                     completion(.success(()))
                 }
             } catch {
+                print("WhisperKit initialization failed: \(error.localizedDescription)")
                 DispatchQueue.main.async {
                     completion(.failure(error))
                 }
