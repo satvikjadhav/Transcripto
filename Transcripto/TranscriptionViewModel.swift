@@ -2,13 +2,28 @@ import Foundation
 import Combine
 import SwiftUI
 
-enum TranscriptionState {
+enum TranscriptionState: Equatable {
     case idle
     case loading
     case recording
     case transcribing
     case completed
     case error(String)
+
+    static func == (lhs: TranscriptionState, rhs: TranscriptionState) -> Bool {
+        switch (lhs, rhs) {
+        case (.idle, .idle),
+             (.loading, .loading  .loading),
+             (.recording, .recording),
+             (.transcribing, .transcribing),
+             (.completed, .completed):
+            return true
+        case let (.error(lhsMessage), .error(rhsMessage)):
+            return lhsMessage == rhsMessage
+        default:
+            return false
+        }
+    }
 }
 
 class TranscriptionViewModel: ObservableObject {
