@@ -35,6 +35,14 @@ class WhisperKitManager {
         }
     }
     
+    /// Prepares WhisperKit for streaming transcription.
+        func prepareForStreamingTranscription() async throws {
+            guard !isModelLoaded else { return }
+            // Initialize WhisperKit if not already loaded
+            whisperKit = try await WhisperKit(model: "tiny", verbose: false)
+            isModelLoaded = true
+        }
+    
     /// Transcribes an audio file from a given URL.
     func transcribeAudioFile(url: URL) async throws -> String {
         guard let whisperKit = whisperKit, isModelLoaded else {
