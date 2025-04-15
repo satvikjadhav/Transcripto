@@ -13,7 +13,7 @@ enum TranscriptionState: Equatable {
     static func == (lhs: TranscriptionState, rhs: TranscriptionState) -> Bool {
         switch (lhs, rhs) {
         case (.idle, .idle),
-             (.loading, .loading  .loading),
+             (.loading, .loading),
              (.recording, .recording),
              (.transcribing, .transcribing),
              (.completed, .completed):
