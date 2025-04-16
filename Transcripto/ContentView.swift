@@ -183,26 +183,192 @@
 import SwiftUI
 
 struct ContentView: View {
-    // Use @StateObject for the ViewModel lifecycle tied to the View
     @StateObject private var viewModel = TranscriptionViewModel()
-    @State private var selectedTab = 0 // Keep your tab selection state
-
+    @State private var selectedTab = 0
+    
     var body: some View {
         TabView(selection: $selectedTab) {
-            // Pass the single ViewModel instance to both views
-            TranscriptionView(viewModel: viewModel)
+            RecordingView(viewModel: viewModel)
                 .tabItem {
-                    Label("Transcribe", systemImage: "waveform")
+                    Label("Record", systemImage: "waveform")
                 }
                 .tag(0)
-
+            
             NotesListView(viewModel: viewModel)
                 .tabItem {
-                    Label("Notes", systemImage: "note.text")
+                    Label("Notes", systemImage: "list.bullet")
                 }
                 .tag(1)
         }
-        // Remove the onAppear permission request here, as it's moved to TranscriptionView's onAppear
+        .accentColor(.red)
+        .onAppear {
+            // Request recording permissions when app launches
+            viewModel.requestRecordingPermission { granted in
+                if !granted {
+                    print("Recording permission denied")
+                }
+            }
+        }
+    }
+}
+
+struct RecordingView: View {
+    @ObservedObject var viewModel: TranscriptionViewModel
+    @State private var showingAlert = false
+    @State private var alertMessage = ""
+    @State private var animateWaveform = false
+    
+    var body: some View {
+        NavigationView {
+            VStack {
+                // Transcription content area
+                ZStack {
+                    // Background
+                    Color(.systemGray6)
+                        .cornerRadius(12)
+                        .shadow(radius: 3)
+                    
+                    VStack {
+                        // Mode selector at top
+                        Picker("Mode", selection: $viewModel.isRealTimeMode) {
+                            Text("Recording").tag(false)
+                            Text("Real-time").tag(true)
+                        }
+                        .pickerStyle(SegmentedPickerStyle())
+                        .padding(.horizontal, 20)
+                        .padding(.top, 20)
+                        
+                        // Visualization / Waveform
+                        ZStack {
+                            if viewModel.state == .recording || viewModel.state == .transcribing {
+                                // Simple waveform visualization
+                                HStack(spacing: 4) {
+                                    ForEach(0..<10, id: \.self) { i in
+                                        RoundedRectangle(cornerRadius: 2)
+                                            .fill(Color.red)
+                                            .frame(width: 3, height: CGFloat.random(in: 10...40))
+                                            .animation(
+                                                Animation.easeInOut(duration: 0.2)
+                                                    .repeatForever()
+                                                    .delay(Double(i) * 0.05),
+                                                value: animateWaveform
+                                            )
+                                    }
+                                }
+                                .padding(.vertical, 30)
+                                .onAppear { animateWaveform = true }
+                                .onDisappear { animateWaveform = false }
+                            } else {
+                                Image(systemName: "waveform")
+                                    .font(.system(size: 50))
+                                    .foregroundColor(.gray)
+                                    .padding(.vertical, 30)
+                            }
+                        }
+                        
+                        // Status indicator
+                        Text(statusText)
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                            .padding(.bottom, 8)
+                        
+                        // Transcription text display
+                        ScrollView {
+                            Text(viewModel.transcriptionText.isEmpty ? "Transcription will appear here" : viewModel.transcriptionText)
+                                .padding()
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .foregroundColor(viewModel.transcriptionText.isEmpty ? .gray : .primary)
+                        }
+                        .frame(maxHeight: .infinity)
+                        
+                        // Save note controls (only when completed)
+                        if viewModel.state == .completed {
+                            VStack(spacing: 12) {
+                                TextField("Note Title", text: $viewModel.currentNoteTitle)
+                                    .textFieldStyle(RoundedBorderTextFieldStyle())
+                                    .padding(.horizontal)
+                                
+                                Button("Save Note") {
+                                    viewModel.saveTranscriptionAsNote()
+                                }
+                                .buttonStyle(.borderedProminent)
+                                .tint(.red)
+                                .padding(.bottom)
+                            }
+                            .padding(.horizontal)
+                            .transition(.opacity)
+                        }
+                    }
+                }
+                .padding()
+                
+                // Recording controls
+                recordingControlsView
+                    .padding(.bottom, 40)
+            }
+            .navigationTitle("Transcripto")
+            .alert(isPresented: $showingAlert) {
+                Alert(title: Text("Error"), message: Text(alertMessage), dismissButton: .default(Text("OK")))
+            }
+            .onChange(of: viewModel.state) { newState in
+                if case .error(let message) = newState {
+                    alertMessage = message
+                    showingAlert = true
+                }
+            }
+            .background(Color(.systemBackground))
+        }
+    }
+    
+    private var statusText: String {
+        switch viewModel.state {
+        case .idle: return "Ready to record"
+        case .loading: return "Loading model..."
+        case .recording: return "Recording..."
+        case .transcribing: return "Transcribing..."
+        case .completed: return "Transcription completed"
+        case .error: return "Error occurred"
+        }
+    }
+    
+    private var recordingControlsView: some View {
+        ZStack {
+            // Outer circle for visual effect
+            Circle()
+                .fill(Color(.systemGray6))
+                .frame(width: 80, height: 80)
+            
+            // Record/Stop button
+            Button(action: {
+                if viewModel.isRealTimeMode {
+                    if viewModel.state == .transcribing {
+                        viewModel.stopRealTimeTranscription()
+                    } else {
+                        viewModel.startRealTimeTranscription()
+                    }
+                } else {
+                    if viewModel.state == .recording {
+                        viewModel.stopRecordingAndTranscribe()
+                    } else {
+                        viewModel.startRecording()
+                    }
+                }
+            }) {
+                ZStack {
+                    Circle()
+                        .fill(viewModel.state == .recording || viewModel.state == .transcribing ? Color.red : Color.white)
+                        .frame(width: 70, height: 70)
+                        .shadow(radius: 3)
+                    
+                    if viewModel.state == .recording || viewModel.state == .transcribing {
+                        RoundedRectangle(cornerRadius: 4)
+                            .fill(Color.white)
+                            .frame(width: 20, height: 20)
+                    }
+                }
+            }
+            .disabled(viewModel.state == .loading || viewModel.state == .transcribing && !viewModel.isRealTimeMode)
+        }
     }
 }
 
