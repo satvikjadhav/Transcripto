@@ -120,9 +120,18 @@ class TranscriptionViewModel: ObservableObject {
         state = .transcribing
         isRealTimeMode = true
         
+        // Set the appropriate title before starting
+        currentNoteTitle = "Real-time Recording \(DateFormatter.localizedString(from: Date(), dateStyle: .short, timeStyle: .short))"
+        
         RealTimeTranscription.shared.onTranscriptionUpdate = { [weak self] text in
             guard let self = self else { return }
-            self.transcriptionText = text
+            
+            // Filter out any remaining artifacts
+            let filteredText = text.replacingOccurrences(of: "(engine revving)", with: "")
+                                  .replacingOccurrences(of: "(music)", with: "")
+                                  .replacingOccurrences(of: "(silence)", with: "")
+            
+            self.transcriptionText = filteredText
         }
         
         Task {
