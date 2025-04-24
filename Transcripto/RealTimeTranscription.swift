@@ -23,18 +23,21 @@ class RealTimeTranscription: NSObject, AVAudioRecorderDelegate {
     // Capture buffer for accumulating audio data
     private var audioBuffer = NSMutableData()
     private let audioBufferMaxSize = 5 * 16000 * 4 // ~5 seconds of audio at 16kHz (4 bytes per float)
-    private let processingInterval: TimeInterval = 2.5 // Process every 2.5 seconds (reduced from 5)
+    private let processingInterval: TimeInterval = 3.0 // Process every 3 seconds
     private var lastProcessingTime: Date?
     private var isProcessing = false
     
-    // Noise detection variables
-    private var silenceThreshold: Float = 0.01 // Threshold to determine silence
+    // Noise detection variables - increased threshold for better speech detection
+    private var silenceThreshold: Float = 0.02 // Increased from 0.01
     private var minimumAudioLevel: Float = 0.0
     private var hasSignificantAudio = false
+    private var consecutiveSilenceFrames = 0
+    private var minConsecutiveSilenceFrames = 10 // About 0.5 second at our buffer size
     
     var onTranscriptionUpdate: ((String) -> Void)?
     private var accumulatedText = ""
     private var previousChunks = Set<String>() // To avoid duplicate phrases
+    private var commonNoise = ["(engine revving)", "(music)", "(silence)"]
     
     private override init() {
         super.init()
@@ -47,7 +50,8 @@ class RealTimeTranscription: NSObject, AVAudioRecorderDelegate {
         
         let audioSession = AVAudioSession.sharedInstance()
         do {
-            try audioSession.setCategory(.record, mode: .measurement, options: .duckOthers)
+            // Prioritize voice with the voiceChat option
+            try audioSession.setCategory(.record, mode: .voiceChat, options: .duckOthers)
             try audioSession.setActive(true)
         } catch {
             print("Error setting up audio session: \(error)")
@@ -64,6 +68,7 @@ class RealTimeTranscription: NSObject, AVAudioRecorderDelegate {
         lastProcessingTime = Date()
         isProcessing = false
         hasSignificantAudio = false
+        consecutiveSilenceFrames = 0
         
         do {
             try await WhisperKitManager.shared.prepareForStreamingTranscription()
@@ -96,32 +101,39 @@ class RealTimeTranscription: NSObject, AVAudioRecorderDelegate {
                 if let channelData = pcmBuffer?.floatChannelData?[0], pcmBuffer!.frameLength > 0 {
                     let frameCount = Int(pcmBuffer!.frameLength)
                     var maxAmplitude: Float = 0
+                    var rmsValue: Float = 0.0
                     
-                    // Calculate the maximum amplitude in this buffer
+                    // Calculate the maximum amplitude and RMS value in this buffer
                     for i in 0..<frameCount {
                         let sample = abs(channelData[i])
                         if sample > maxAmplitude {
                             maxAmplitude = sample
                         }
+                        rmsValue += sample * sample
                     }
                     
-                    // Update our min level if this is significant audio
-                    if maxAmplitude > self.silenceThreshold {
+                    // Calculate RMS (root mean square) for better voice activity detection
+                    rmsValue = sqrt(rmsValue / Float(frameCount))
+                    
+                    // Update our consecutive silence frames count
+                    if rmsValue < self.silenceThreshold {
+                        self.consecutiveSilenceFrames += 1
+                    } else {
+                        self.consecutiveSilenceFrames = 0
                         self.hasSignificantAudio = true
                         self.minimumAudioLevel = max(self.minimumAudioLevel, maxAmplitude * 0.5)
                     }
                 }
                 
-                // Only append the buffer if it contains significant audio
-                if self.hasSignificantAudio {
+                // Only append the buffer if it contains significant audio or we haven't had too much silence
+                if self.hasSignificantAudio && self.consecutiveSilenceFrames < self.minConsecutiveSilenceFrames {
                     self.appendAudioBuffer(pcmBuffer!)
                 }
                 
                 // Process the audio at regular intervals if not already processing
                 if !self.isProcessing,
                    let lastTime = self.lastProcessingTime,
-                   Date().timeIntervalSince(lastTime) >= self.processingInterval {
-                    // Remove hasSignificantAudio check here
+                   Date().timeIntervalSince(lastTime) >= self.processingInterval && self.audioBuffer.length > 8000 {
                     self.isProcessing = true
                     self.processAccumulatedAudio()
                     self.lastProcessingTime = Date()
@@ -151,7 +163,7 @@ class RealTimeTranscription: NSObject, AVAudioRecorderDelegate {
     
     private func processAccumulatedAudio() {
         // Don't process if buffer is too small
-        guard audioBuffer.length > 4000 else {
+        guard audioBuffer.length > 8000 else { // Increased minimum processing size
             self.isProcessing = false
             return
         }
@@ -166,26 +178,35 @@ class RealTimeTranscription: NSObject, AVAudioRecorderDelegate {
         Task {
             do {
                 let text = try await WhisperKitManager.shared.transcribeAudioChunk(bufferCopy)
+                
+                // Check if we got meaningful text (not just noise markers)
+                var isNoise = false
                 if !text.isEmpty {
-                    // Clean and filter the text
-                    let newText = text.trimmingCharacters(in: .whitespacesAndNewlines)
-                        .replacingOccurrences(of: "(engine revving)", with: "")
-                        .replacingOccurrences(of: "(music)", with: "")
-                        .replacingOccurrences(of: "(silence)", with: "")
+                    isNoise = self.commonNoise.contains(text.trimmingCharacters(in: .whitespacesAndNewlines))
                     
-                    if !newText.isEmpty && !self.previousChunks.contains(newText) {
-                        // Add to the set of previous chunks to avoid repetition
-                        self.previousChunks.insert(newText)
+                    if !isNoise {
+                        // Clean and filter the text
+                        let newText = text.trimmingCharacters(in: .whitespacesAndNewlines)
+                            .replacingOccurrences(of: "(engine revving)", with: "")
+                            .replacingOccurrences(of: "(music)", with: "")
+                            .replacingOccurrences(of: "(silence)", with: "")
                         
-                        // Add to accumulated text with proper spacing
-                        if !self.accumulatedText.isEmpty && !self.accumulatedText.hasSuffix(" ") {
-                            self.accumulatedText += " "
+                        if !newText.isEmpty && !self.previousChunks.contains(newText) {
+                            // Add to the set of previous chunks to avoid repetition
+                            self.previousChunks.insert(newText)
+                            
+                            // Add to accumulated text with proper spacing
+                            if !self.accumulatedText.isEmpty && !self.accumulatedText.hasSuffix(" ") {
+                                self.accumulatedText += " "
+                            }
+                            self.accumulatedText += newText
+                            
+                            DispatchQueue.main.async {
+                                self.onTranscriptionUpdate?(self.accumulatedText)
+                            }
                         }
-                        self.accumulatedText += newText
-                        
-                        DispatchQueue.main.async {
-                            self.onTranscriptionUpdate?(self.accumulatedText)
-                        }
+                    } else {
+                        print("Noise detected, ignoring: \(text)")
                     }
                 }
             } catch {
@@ -200,7 +221,7 @@ class RealTimeTranscription: NSObject, AVAudioRecorderDelegate {
         guard isTranscribing, let audioEngine = audioEngine else { return accumulatedText }
         
         // Process any remaining audio if we have enough
-        if audioBuffer.length > 4000 && !isProcessing && hasSignificantAudio {
+        if audioBuffer.length > 8000 && !isProcessing && hasSignificantAudio {
             processAccumulatedAudio()
         }
         
